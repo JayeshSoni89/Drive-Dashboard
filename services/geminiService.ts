@@ -1,19 +1,19 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-// Assume API_KEY is set in the environment.
-// Do not add any UI for managing the API key.
-if (!process.env.API_KEY) {
-  // In a real app, you might want to handle this more gracefully.
-  // For this example, we'll log an error to the console.
-  console.error("API_KEY environment variable not set. Gemini features will not work.");
-}
+let ai: GoogleGenAI | null = null;
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+export const initGemini = (apiKey: string) => {
+  if (!apiKey) {
+    console.error("API key is missing. Gemini features will not work.");
+    return;
+  }
+  ai = new GoogleGenAI({ apiKey });
+};
 
 export const suggestCategory = async (fileName: string, existingCategories: string[]): Promise<string> => {
-  if (!process.env.API_KEY) {
-    throw new Error("Gemini API key is not configured.");
+  if (!ai) {
+    throw new Error("Gemini API is not initialized. Please call initGemini first.");
   }
   
   const prompt = `
@@ -41,6 +41,7 @@ export const suggestCategory = async (fileName: string, existingCategories: stri
     } else {
       // Fallback if the model hallucinates a category not in the list
       console.warn(`Gemini suggested a new category: "${cleanedText}". Falling back.`);
+      // Return the first category as a safe default
       return existingCategories[0] || "General";
     }
 
