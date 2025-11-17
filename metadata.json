@@ -1,0 +1,5 @@
+{
+  "name": "DocSync Hub",
+  "description": "A web application to organize, categorize, and search your Google Sheets and Docs. It uses local storage to save your data, providing a persistent, personalized experience without needing a backend.",
+  "requestFramePermissions": []
+}
