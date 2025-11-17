@@ -3,7 +3,7 @@ import Dashboard from './components/Dashboard';
 import LoginScreen from './components/LoginScreen';
 import { Doc, Category, GoogleUser, CategoryMapping } from './types';
 import { GoogleDocIcon, GoogleSheetIcon, LogoIcon } from './components/icons';
-import { fetchFiles, initGapiClient, initGisClient } from './services/googleApiService';
+import { fetchFiles } from './services/googleApiService';
 import { initGemini } from './services/geminiService';
 
 // Credentials provided by the user.
@@ -31,7 +31,7 @@ const App: React.FC = () => {
   }, []);
 
   const syncData = useCallback(async () => {
-    if (!user || !window.gapi?.client) return;
+    if (!user || !window.gapi?.client?.drive) return;
     setIsSyncing(true);
     try {
       const files = await fetchFiles(window.gapi);
@@ -59,61 +59,75 @@ const App: React.FC = () => {
 
 
   useEffect(() => {
-    const initClients = async () => {
-      try {
-        if (!GOOGLE_CLIENT_ID || !GOOGLE_API_KEY) {
-            throw new Error("Google Client ID or API Key is not configured.");
-        }
+    const initClients = () => {
+      const gapiLoadedCallback = () => {
+        try {
+          if (!window.google) {
+            setError("Google Identity Services script failed to load. Please try again.");
+            setIsLoading(false);
+            return;
+          }
 
-        // Initialize all services
-        initGemini(GOOGLE_API_KEY);
-        const gapi = await initGapiClient(GOOGLE_API_KEY);
-        const google = await initGisClient();
-
-        const client = google.accounts.oauth2.initTokenClient({
-          client_id: GOOGLE_CLIENT_ID,
-          scope: 'https://www.googleapis.com/auth/drive.readonly',
-          callback: async (tokenResponse: any) => {
-            if (tokenResponse.error) {
+          const client = window.google.accounts.oauth2.initTokenClient({
+            client_id: GOOGLE_CLIENT_ID,
+            scope: 'https://www.googleapis.com/auth/drive.readonly',
+            callback: async (tokenResponse: any) => {
+              if (tokenResponse.error) {
                 console.error('Token response error:', tokenResponse.error);
                 setError(`Google Sign-In failed: ${tokenResponse.error_description || tokenResponse.error}`);
-                setIsLoading(false);
                 return;
-            }
-
-            if (tokenResponse.access_token) {
-              gapi.client.setToken(tokenResponse);
-              // Fetch user profile
-              try {
-                const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                  headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
-                });
-                if (!res.ok) throw new Error(`Failed to fetch user profile: ${res.statusText}`);
-                const profile = await res.json();
-                
-                const googleUser: GoogleUser = {
-                  id: profile.sub,
-                  name: profile.name,
-                  email: profile.email,
-                  picture: profile.picture
-                };
-                setUser(googleUser);
-              } catch (profileError) {
-                  console.error("Error fetching user profile:", profileError);
-                  setError("Could not retrieve your Google profile. Please try again.");
               }
-            }
-          },
-        });
-        setTokenClient(client);
-      } catch(e) {
-          console.error("Initialization failed:", e);
-          setError(e instanceof Error ? e.message : "An unknown error occurred during setup.");
-      } finally {
-          setIsLoading(false);
-      }
+
+              if (tokenResponse.access_token) {
+                window.gapi.client.setToken(tokenResponse);
+                
+                try {
+                  // Now load the Drive API since we have a token
+                  await window.gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
+
+                  // Fetch user profile
+                  const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                    headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
+                  });
+                  if (!res.ok) throw new Error(`Failed to fetch user profile: ${res.statusText}`);
+                  const profile = await res.json();
+                  
+                  const googleUser: GoogleUser = {
+                    id: profile.sub,
+                    name: profile.name,
+                    email: profile.email,
+                    picture: profile.picture
+                  };
+                  setUser(googleUser);
+
+                } catch (apiError) {
+                    console.error("Error loading Drive API or fetching profile:", apiError);
+                    setError("Could not connect to Google Drive. Please try signing in again.");
+                }
+              }
+            },
+          });
+          setTokenClient(client);
+        } catch (e) {
+            console.error("Initialization failed:", e);
+            setError(e instanceof Error ? e.message : "An unknown error occurred during setup.");
+        } finally {
+            setIsLoading(false);
+        }
+      };
+
+      const waitForGapi = () => {
+        if (window.gapi && window.gapi.load) {
+          window.gapi.load('client', gapiLoadedCallback);
+        } else {
+          setTimeout(waitForGapi, 100);
+        }
+      };
+      
+      initGemini(GOOGLE_API_KEY);
+      waitForGapi();
     };
-    
+
     initClients();
   }, []);
 
