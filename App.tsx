@@ -82,6 +82,9 @@ const App: React.FC = () => {
                 window.gapi.client.setToken(tokenResponse);
                 
                 try {
+                  // Set the API Key for the gapi client. This is required for discovery requests.
+                  window.gapi.client.setApiKey(GOOGLE_API_KEY);
+                  
                   // Now load the Drive API since we have a token
                   await window.gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
 
